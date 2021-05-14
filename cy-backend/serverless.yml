@@ -1,0 +1,163 @@
+service: cy-backend
+
+frameworkVersion: '2'
+
+provider:
+    name: aws
+    runtime: nodejs12.x
+    environment:
+        TABLE: ${self:service}-${opt:stage, self:provider.stage}
+        TEST_STATE: ${self:service}-testState-${self:custom.stage}
+        ENDPOINT: ${self:custom.endpoint}
+
+    iamRoleStatements:
+        - Effect: Allow
+          Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+          Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:service}-${opt:stage, self:provider.stage}'
+        - Effect: Allow
+          Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+          Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${self:service}-testState-${opt:stage, self:provider.stage}'
+
+custom:
+    stage: ${opt:stage, self:provider.stage}
+    region: ${opt:region, self:provider.region}
+    endpoint:
+        Fn::Join:
+            - ''
+            - - https://
+              - Ref: ApiGatewayRestApi
+              - .execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}
+
+functions:
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Frontend
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    main:
+        handler: handler.main
+        events:
+            - http:
+                  path: /
+                  method: GET
+                  cors: true
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Api
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    listnotes:
+        handler: handler.listnotes
+        events:
+            - http:
+                  path: /api/listnotes
+                  method: GET
+                  cors: true
+
+    createnote:
+        handler: handler.createnote
+        events:
+            - http:
+                  path: /api/createnote
+                  method: POST
+                  cors: true
+
+    removenote:
+        handler: handler.removenote
+        events:
+            - http:
+                  path: /api/removenote
+                  method: POST
+                  cors: true
+
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    # Test
+    # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    addstate:
+        handler: handler.addState
+        events:
+            - http:
+                  path: /test/addstate
+                  method: POST
+                  cors: true
+
+    removestate:
+        handler: handler.removeState
+        events:
+            - http:
+                  path: /test/removestate
+                  method: POST
+                  cors: true
+
+    checkState:
+        handler: handler.checkState
+        events:
+            - schedule: rate(1 minute)
+
+    getstate:
+        handler: handler.getState
+        events:
+            - http:
+                  path: /test/getstate
+                  method: GET
+                  cors: true
+
+resources:
+    Resources:
+        # - - - - - - - - - - - - - - - - - - -
+        # DB
+        # - - - - - - - - - - - - - - - - - - -
+        table:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:service}-${self:custom.stage}
+                AttributeDefinitions:
+                    - AttributeName: PK
+                      AttributeType: S
+                    - AttributeName: SK
+                      AttributeType: S
+                    - AttributeName: GSI1
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: PK
+                      KeyType: HASH
+                    - AttributeName: SK
+                      KeyType: RANGE
+                BillingMode: PAY_PER_REQUEST
+                GlobalSecondaryIndexes:
+                    - IndexName: GSI1
+                      KeySchema:
+                          - AttributeName: GSI1
+                            KeyType: HASH
+                          - AttributeName: SK
+                            KeyType: RANGE
+                      Projection:
+                          ProjectionType: ALL
+        testState:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:service}-testState-${self:custom.stage}
+                AttributeDefinitions:
+                    - AttributeName: PK
+                      AttributeType: S
+                    - AttributeName: SK
+                      AttributeType: S
+
+                KeySchema:
+                    - AttributeName: PK
+                      KeyType: HASH
+                    - AttributeName: SK
+                      KeyType: RANGE
+                TimeToLiveSpecification:
+                    AttributeName: TTL
+                    Enabled: True
+                BillingMode: PAY_PER_REQUEST
